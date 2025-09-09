@@ -1,44 +1,48 @@
 import imaplib
 import email
-
 import yaml
 
-with open("credentials.yml") as f:
-    content = f.read()
-    
-my_credentials = yaml.load(content, Loader=yaml.FullLoader)
+import html2text
+h = html2text.HTML2Text() #create instance of HTML2Text
+h.ignore_links = True
 
-user, password = my_credentials["user"], my_credentials["password"]
+from google.auth.transport.requests import Request
+ 
+def inbox_scraper(): #function to scrape emails
+    with open("credentials.yml") as f:
+        content = f.read()
+        
+    my_credentials = yaml.load(content, Loader=yaml.FullLoader)
 
-imap_url = 'imap.gmail.com'
+    user, password = my_credentials["user"], my_credentials["password"]
 
-my_mail = imaplib.IMAP4_SSL(imap_url)
+    imap_url = 'imap.gmail.com'
 
-my_mail.login(user, password)
+    my_mail = imaplib.IMAP4_SSL(imap_url)
 
-my_mail.select('Inbox')
+    my_mail.login(user, password)
 
-key = 'FROM'
-value = 'learnhlp@uwaterloo.ca'
-_, data = my_mail.search(None, key, value)
+    my_mail.select('Inbox')
 
-mail_id_list = data[0].split()
+    _, data = my_mail.search(None, 'FROM', 'learnhlp@uwaterloo.ca')
 
-msgs = []
-for num in mail_id_list:
-    typ, data = my_mail.fetch(num, '(RFC822)') #RFC822 returns whole message
-    msgs.append(data)
+    mail_id_list = data[0].split()
 
-for msg in msgs[::-1]:
-    for response_part in msg:
-        if type(response_part) is tuple:
-            my_msg=email.message_from_bytes((response_part[1]))
-            print("_________________________________________")
-            print ("subj:", my_msg['subject'])
-            print ("from:", my_msg['from'])
-            print ("body:")
-            for part in my_msg.walk():  
-                #print(part.get_content_type())
-                if part.get_content_type() == 'text/plain':
-                    print (part.get_payload())
-            
+    msgs = []
+    for num in mail_id_list:
+        typ, data = my_mail.fetch(num, '(RFC822)') #RFC822 returns whole message
+        msgs.append(data)
+
+    for msg in msgs[::-1]:
+        for response_part in msg:
+            if type(response_part) is tuple:
+                my_msg=email.message_from_bytes((response_part[1]))
+                print("_________________________________________")
+                print ("subj:", my_msg['subject'])
+                print ("from:", my_msg['from'])
+                print ("body:")
+                for part in my_msg.walk():
+                    #print(part.get_content_type())
+                    print(h.handle(part.get_payload()))
+
+inbox_scraper()
