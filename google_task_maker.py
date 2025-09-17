@@ -13,10 +13,14 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-CLIENT_FILE = 'client_secret_577299332042-jc7q7nibi10kcbr2o4rhllhio6uc273m.apps.googleusercontent.com'
+CLIENT_FILE = 'client_secret.json'
 API_NAME = 'tasks'
 API_VERSION = 'v1'
 SCOPES = ['https://www.googleapis.com/auth/tasks']
+
+MY_TASKS = 'MDA3Njg0NTA5OTg0MjgzODMzMjc6MDow'
+DAILY_TO_DO = 'VFBmTWROd2lsa1dKSXl5Rw'
+LEARN_NOTIFS = 'alF6R3c4eHdhdEdOSHc2OQ'
 
 creds = None
 
@@ -31,6 +35,32 @@ if not creds or not creds.valid:
         creds = flow.run_local_server(port=0)
     with open('token.json', 'w') as token:
         token.write(creds.to_json())
+    
+# Create the service object instance
+service = build('tasks', 'v1', credentials=creds)
+
+# Call the Tasks API to retrieve all task lists
+results = service.tasklists().list().execute()
+items = results.get('items', [])
+
+if not items:
+    print('No task lists found.')
+else:
+    print('Your task lists:')
+    for item in items:
+        print(f"Title: {item['title']}, ID: {item['id']}")
+
+def create_google_task(service, tasklist_id, title, notes):
+    """Creates a new task in a specified Google Tasks list."""
+    task = {
+        'title': title,
+        'notes': notes
+    }
+    try:
+        results = service.tasks().insert(tasklist=tasklist_id, body=task).execute()
+        print(f"Task created: {results['title']}")
+    except HttpError as error:
+        print(f"An error occurred: {error}")
 
 def inbox_scraper(): #function to scrape emails
     with open("credentials.yml") as f:
@@ -57,16 +87,27 @@ def inbox_scraper(): #function to scrape emails
         typ, data = my_mail.fetch(num, '(RFC822)') #RFC822 returns whole message
         msgs.append(data)
 
-    for msg in msgs[::-1]:
+    for msg in msgs[::-1]: 
         for response_part in msg:
             if type(response_part) is tuple:
                 my_msg=email.message_from_bytes((response_part[1]))
-                print("_________________________________________")
-                print ("subj:", my_msg['subject'])
-                print ("from:", my_msg['from'])
-                print ("body:")
+                # Print Mail
+                # print("_________________________________________")
+                # print ("subj:", my_msg['subject'])
+                # print ("from:", my_msg['from'])
+                # print ("body:")
                 for part in my_msg.walk():
-                    #print(part.get_content_type())
-                    print(h.handle(part.get_payload()))
+                    # print(part.get_content_type())
+                    # print(h.handle(part.get_payload()))
+                    print('')
+
+        try:
+            # Pass the instance to the function
+            create_google_task(service, 'alF6R3c4eHdhdEdOSHc2OQ', my_msg['subject'], h.handle(part.get_payload()))
+
+        except Exception as e:
+            print(f"An error occurred: {e}")
 
 inbox_scraper()
+
+
