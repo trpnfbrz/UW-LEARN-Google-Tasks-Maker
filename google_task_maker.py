@@ -14,9 +14,8 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 CLIENT_FILE = 'client_secret.json'
-API_NAME = 'tasks'
-API_VERSION = 'v1'
-SCOPES = ['https://www.googleapis.com/auth/tasks']
+TASKS_SCOPES = 'https://www.googleapis.com/auth/tasks'
+GMAIL_SCOPES = 'https://mail.google.com/'
 
 MY_TASKS = 'MDA3Njg0NTA5OTg0MjgzODMzMjc6MDow'
 DAILY_TO_DO = 'VFBmTWROd2lsa1dKSXl5Rw'
@@ -25,22 +24,23 @@ LEARN_NOTIFS = 'alF6R3c4eHdhdEdOSHc2OQ'
 creds = None
 
 if os.path.exists('token.json'):
-    creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    creds = Credentials.from_authorized_user_file('token.json', [TASKS_SCOPES, GMAIL_SCOPES])
 
 if not creds or not creds.valid:
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
     else: 
-        flow = InstalledAppFlow.from_client_secrets_file(CLIENT_FILE, SCOPES)
+        flow = InstalledAppFlow.from_client_secrets_file(CLIENT_FILE, [TASKS_SCOPES, GMAIL_SCOPES])
         creds = flow.run_local_server(port=0)
     with open('token.json', 'w') as token:
         token.write(creds.to_json())
     
-# Create the service object instance
-service = build('tasks', 'v1', credentials=creds)
+# Create service object instances
+tasks_service = build('tasks', 'v1', credentials=creds)
+gmail_service = build('gmail', 'v1', credentials=creds)
 
 # Call the Tasks API to retrieve all task lists
-results = service.tasklists().list().execute()
+results = tasks_service.tasklists().list().execute()
 items = results.get('items', [])
 
 if not items:
@@ -62,7 +62,30 @@ def create_google_task(service, tasklist_id, title, notes):
     except HttpError as error:
         print(f"An error occurred: {error}")
 
-def inbox_scraper(): #function to scrape emails
+def search_messages(service, query):
+    result = service.users().messages().list(userId='me',q=query).execute()
+    messages = [ ]
+    if 'messages' in result:
+        messages.extend(result['messages'])
+    while 'nextPageToken' in result:
+        page_token = result['nextPageToken']
+        result = service.users().messages().list(userId='me',q=query, pageToken=page_token).execute()
+        if 'messages' in result:
+            messages.extend(result['messages'])
+    return messages
+
+def archive_mail(service, query): # Function to archive read emails
+    messages_to_mark = search_messages(service, query)
+    print(f"Archived emails: {len(messages_to_mark)}")
+    return service.users().messages().batchModify(
+      userId='me',
+      body={
+          'ids': [ msg['id'] for msg in messages_to_mark ],
+          'removeLabelIds': ['INBOX']
+      }
+    ).execute()
+
+def inbox_scraper(): # Function to scrape emails
     with open("credentials.yml") as f:
         content = f.read()
         
@@ -101,13 +124,16 @@ def inbox_scraper(): #function to scrape emails
                     # print(h.handle(part.get_payload()))
                     print('')
 
-        try:
-            # Pass the instance to the function
-            create_google_task(service, 'alF6R3c4eHdhdEdOSHc2OQ', my_msg['subject'], h.handle(part.get_payload()))
-
+        try: # Pass the instance to the function
+            create_google_task(tasks_service, LEARN_NOTIFS, my_msg['subject'], h.handle(part.get_payload()))
         except Exception as e:
             print(f"An error occurred: {e}")
 
 inbox_scraper()
+
+try: # Archive read notification
+    archive_mail(gmail_service, 'learnhlp@uwaterloo.ca')
+except Exception as e:
+    print(f"An error occurred: {e}")
 
 
